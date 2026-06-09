@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>PANDRUM</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -27,20 +27,26 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
     touch-action: none;
-    padding-top: 44px;
-    padding-bottom: 120px;
   }
 
   #hud {
-    position: fixed;
-    top: 0; left: 0; right: 0;
-    padding: 12px 20px;
+    width: 100%;
+    padding: max(12px, env(safe-area-inset-top)) 20px 12px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    z-index: 10;
+    flex-shrink: 0;
+  }
+
+  #drum-area {
+    flex: 1;
+    min-height: 0;
+    container-type: size;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
   }
 
   #title {
@@ -63,8 +69,8 @@
 
   #drum-container {
     position: relative;
-    width: min(90vw, calc(100dvh - 180px));
-    height: min(90vw, calc(100dvh - 180px));
+    width: min(90vw, 90cqh);
+    height: min(90vw, 90cqh);
   }
 
   /* Outer rim */
@@ -147,14 +153,13 @@
 
   /* Controls */
   #controls {
-    position: fixed;
-    bottom: 0; left: 0; right: 0;
-    padding: 10px 16px 16px;
+    width: 100%;
+    padding: 10px 16px max(16px, env(safe-area-inset-bottom));
     display: flex;
     flex-direction: column;
     gap: 10px;
     background: rgba(7,7,13,0.85);
-    z-index: 10;
+    flex-shrink: 0;
   }
 
   .ctrl-row {
@@ -273,6 +278,7 @@
   <span id="debug-val" style="font-size:10px;color:#39ff6e;letter-spacing:0.1em;"></span>
 </div>
 
+<div id="drum-area">
 <div id="drum-container">
   <svg id="pads-svg" viewBox="0 0 200 200">
     <defs>
@@ -328,6 +334,7 @@
   </svg>
 
   <canvas id="ripple-canvas"></canvas>
+</div>
 </div>
 
 <div id="controls">
