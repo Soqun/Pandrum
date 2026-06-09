@@ -350,6 +350,9 @@
       <option value="G">G maj</option>
       <option value="E">E min</option>
       <option value="C">C maj</option>
+      <option value="WT">WHOLE TONE</option>
+      <option value="PENTA">PENTA Am</option>
+      <option value="RYU">RYUKYU D</option>
     </select>
     <select id="sound-select">
       <option value="steel">STEEL</option>
@@ -419,11 +422,14 @@ function setCyberAmount(v) {
 
 // ─── Scale Definitions ───────────────────────────────────────────
 const scales = {
-  D:  [62, 66, 69, 71, 73, 74, 76, 78, 50], // D maj pentatonic-ish
-  A:  [69, 73, 76, 78, 80, 81, 83, 85, 57],
-  G:  [67, 71, 74, 76, 78, 79, 81, 83, 55],
-  E:  [64, 67, 71, 74, 76, 77, 79, 81, 52],
-  C:  [60, 64, 67, 69, 71, 72, 74, 76, 48],
+  D:     [62, 66, 69, 71, 73, 74, 76, 78, 50], // D maj pentatonic-ish
+  A:     [69, 73, 76, 78, 80, 81, 83, 85, 57],
+  G:     [67, 71, 74, 76, 78, 79, 81, 83, 55],
+  E:     [64, 67, 71, 74, 76, 77, 79, 81, 52],
+  C:     [60, 64, 67, 69, 71, 72, 74, 76, 48],
+  WT:    [62, 64, 66, 68, 70, 72, 74, 76, 50], // D whole tone (全音音階)
+  PENTA: [69, 72, 74, 76, 79, 81, 84, 86, 57], // A minor pentatonic
+  RYU:   [62, 66, 67, 69, 73, 74, 78, 79, 50], // D Ryukyu (琉球音階)
 };
 let currentNotes = scales['D'];
 
