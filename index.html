@@ -69,8 +69,8 @@
 
   #drum-container {
     position: relative;
-    width: min(90vw, 90cqh);
-    height: min(90vw, 90cqh);
+    width: min(80vw, 78cqh);
+    height: min(80vw, 78cqh);
   }
 
   /* Outer rim */
@@ -154,7 +154,7 @@
   /* Controls */
   #controls {
     width: 100%;
-    padding: 10px 16px max(16px, env(safe-area-inset-bottom));
+    padding: 10px 16px max(24px, calc(env(safe-area-inset-bottom) + 12px));
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -366,6 +366,7 @@
     <select id="sound-select">
       <option value="steel">STEEL</option>
       <option value="xylo">XYLO</option>
+      <option value="bell">BELL</option>
     </select>
     <button id="reset-btn">⊙ RESET</button>
   </div>
@@ -514,6 +515,19 @@ function playNote(midiNote, velocity = 0.8) {
     envGain.gain.linearRampToValueAtTime(velocity, now + 0.002);
     envGain.gain.exponentialRampToValueAtTime(velocity * 0.3, now + 0.03);
     envGain.gain.exponentialRampToValueAtTime(0.001, now + decay * 0.5);
+  } else if (sound === 'bell') {
+    // ベル: 非倍音FM (1.4x/3.57x) でチューブラーベル系の金属質な響き
+    mod1.frequency.value = freq * 1.4;
+    mod2.frequency.value = freq * 3.57;
+    modGain1.gain.setValueAtTime(freq * 7.0, now);
+    modGain1.gain.exponentialRampToValueAtTime(freq * 0.3, now + 0.4);
+    modGain1.gain.exponentialRampToValueAtTime(0.01, now + decay * 1.5);
+    modGain2.gain.setValueAtTime(freq * 2.5, now);
+    modGain2.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+    envGain.gain.setValueAtTime(0, now);
+    envGain.gain.linearRampToValueAtTime(velocity, now + 0.001);
+    envGain.gain.exponentialRampToValueAtTime(velocity * 0.7, now + 0.06);
+    envGain.gain.exponentialRampToValueAtTime(0.001, now + decay * 2.0);
   } else {
     // スチールパン
     mod1.frequency.value = freq * 2.756;
@@ -530,12 +544,6 @@ function playNote(midiNote, velocity = 0.8) {
 
   // グローバルLFOをdetuneに接続（cent単位）
   globalLfoDepthNode.connect(carrier.detune);
-
-  // Envelope
-  envGain.gain.setValueAtTime(0, now);
-  envGain.gain.linearRampToValueAtTime(velocity * 0.9, now + 0.005);
-  envGain.gain.exponentialRampToValueAtTime(velocity * 0.4, now + 0.08);
-  envGain.gain.exponentialRampToValueAtTime(0.001, now + decay);
 
   mod1.connect(modGain1);
   mod2.connect(modGain2);
@@ -563,12 +571,13 @@ function playNote(midiNote, velocity = 0.8) {
     dryBoost.connect(masterGain);
   }
 
+  const stopOffset = sound === 'bell' ? decay * 2.0 + 0.1 : decay + 0.1;
   carrier.start(now);
   mod1.start(now);
   mod2.start(now);
-  carrier.stop(now + decay + 0.1);
-  mod1.stop(now + decay + 0.1);
-  mod2.stop(now + decay + 0.1);
+  carrier.stop(now + stopOffset);
+  mod1.stop(now + stopOffset);
+  mod2.stop(now + stopOffset);
 }
 
 // ─── Ripple Canvas ───────────────────────────────────────────────
@@ -660,11 +669,19 @@ function startGyro() {
     // 基準未設定なら今の角度をゼロ点に
     if (baseBeta === null) { baseBeta = beta; return; }
 
-    // 手前に傾ける(beta減少) = ピッチアップ (+)
-    // 奥に傾ける(beta増加)  = ピッチダウン (-)
+    // 前後傾き → ピッチビブラート
     const raw = (beta - baseBeta) / TILT_RANGE;
     const clamped = Math.max(-1, Math.min(1, raw));
     vibratoDepth = tiltCurve(clamped);
+
+    // 左右傾き(gamma) → 音色切り替え: 左=XYLO / 中央=STEEL / 右=BELL
+    const gamma = e.gamma || 0;
+    const GAMMA_ZONE = 28;
+    const newSound = gamma < -GAMMA_ZONE ? 'xylo' : gamma > GAMMA_ZONE ? 'bell' : 'steel';
+    if (newSound !== currentSound) {
+      currentSound = newSound;
+      document.getElementById('sound-select').value = newSound;
+    }
   });
   gyroEnabled = true;
 }
