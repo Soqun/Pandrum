@@ -824,15 +824,7 @@ function startGyro() {
 
     // 左右傾き(gamma)
     const gamma = e.gamma || 0;
-    if (appMode === 'perc') {
-      // PERCモード: 4ゾーンで楽器切り替え
-      const iIdx = gamma < -45 ? 0 : gamma < -10 ? 1 : gamma < 20 ? 2 : 3;
-      const newInstr = percInstrList[iIdx].id;
-      if (newInstr !== currentPercInstr) {
-        currentPercInstr = newInstr;
-        document.querySelectorAll('.instr-btn').forEach((b, i) => b.classList.toggle('active', i === iIdx));
-      }
-    } else {
+    if (appMode !== 'perc') {
       // DRUMモード: TILT選択時のみgammaで音色切り替え
       const sel = document.getElementById('sound-select');
       if (sel.value === 'tilt') {
