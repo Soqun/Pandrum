@@ -600,7 +600,7 @@ let gyroEnabled = false;
 
 // 基準角度（リセットボタンで更新）
 let baseBeta = null;
-const MAX_CENTS = 250;   // 最大±2.5半音
+const MAX_CENTS = 100;   // 最大±1半音
 const TILT_RANGE = 25;   // この角度(deg)で最大値
 const DEAD_ZONE = 0.15;  // 中央このくらいまではほぼ変化なし
 
@@ -647,7 +647,7 @@ function startGyro() {
 
     // 手前に傾ける(beta減少) = ピッチアップ (+)
     // 奥に傾ける(beta増加)  = ピッチダウン (-)
-    const raw = -(beta - baseBeta) / TILT_RANGE;
+    const raw = (beta - baseBeta) / TILT_RANGE;
     const clamped = Math.max(-1, Math.min(1, raw));
     vibratoDepth = tiltCurve(clamped);
   });
