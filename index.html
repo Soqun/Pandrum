@@ -147,19 +147,28 @@
   #controls {
     position: fixed;
     bottom: 0; left: 0; right: 0;
-    padding: 16px 24px;
+    padding: 10px 16px 16px;
     display: flex;
-    gap: 20px;
+    flex-direction: column;
+    gap: 10px;
+    background: rgba(7,7,13,0.85);
+    z-index: 10;
+  }
+
+  .ctrl-row {
+    display: flex;
+    gap: 12px;
     align-items: center;
     justify-content: center;
-    z-index: 10;
   }
 
   .knob-group {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
+    flex: 1;
+    max-width: 110px;
   }
 
   .knob-label {
@@ -170,24 +179,24 @@
 
   input[type=range] {
     -webkit-appearance: none;
-    width: 80px;
-    height: 2px;
+    width: 100%;
+    height: 3px;
     background: linear-gradient(to right, var(--steel), var(--rim));
-    border-radius: 1px;
+    border-radius: 2px;
     outline: none;
   }
 
   input[type=range]::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 14px;
-    height: 14px;
+    width: 20px;
+    height: 20px;
     border-radius: 50%;
     background: var(--steel);
-    box-shadow: 0 0 6px var(--steel);
+    box-shadow: 0 0 8px var(--steel);
     cursor: pointer;
   }
 
-  #key-select {
+  #key-select, #sound-select {
     background: transparent;
     border: 1px solid #1e3d52;
     color: var(--steel);
@@ -199,9 +208,23 @@
     cursor: pointer;
   }
 
-  #key-select option {
+  #key-select option, #sound-select option {
     background: #0a1a22;
   }
+
+  #reset-btn {
+    background: transparent;
+    border: 1px solid var(--cyber);
+    color: var(--cyber);
+    font-family: 'Courier New', monospace;
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    padding: 6px 10px;
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(57,255,110,0.2);
+    touch-action: manipulation;
+  }
+  #reset-btn:active { background: rgba(57,255,110,0.15); }
 
   /* Gyro permission button */
   #gyro-btn {
@@ -306,20 +329,33 @@
 </div>
 
 <div id="controls">
-  <div class="knob-group">
-    <span class="knob-label">DECAY</span>
-    <input type="range" id="decay-slider" min="0.5" max="4" step="0.1" value="2">
+  <div class="ctrl-row">
+    <div class="knob-group">
+      <span class="knob-label">DECAY</span>
+      <input type="range" id="decay-slider" min="0.5" max="4" step="0.1" value="2">
+    </div>
+    <div class="knob-group">
+      <span class="knob-label">CYBER</span>
+      <input type="range" id="cyber-slider" min="0" max="1" step="0.01" value="0.3">
+    </div>
+    <div class="knob-group">
+      <span class="knob-label">REVERB</span>
+      <input type="range" id="reverb-slider" min="0" max="1" step="0.01" value="0.25">
+    </div>
   </div>
-  <select id="key-select">
-    <option value="D">D maj</option>
-    <option value="A">A maj</option>
-    <option value="G">G maj</option>
-    <option value="E">E min</option>
-    <option value="C">C maj</option>
-  </select>
-  <div class="knob-group">
-    <span class="knob-label">CYBER</span>
-    <input type="range" id="cyber-slider" min="0" max="1" step="0.01" value="0.3">
+  <div class="ctrl-row">
+    <select id="key-select">
+      <option value="D">D maj</option>
+      <option value="A">A maj</option>
+      <option value="G">G maj</option>
+      <option value="E">E min</option>
+      <option value="C">C maj</option>
+    </select>
+    <select id="sound-select">
+      <option value="steel">STEEL</option>
+      <option value="xylo">XYLO</option>
+    </select>
+    <button id="reset-btn">⊙ RESET</button>
   </div>
 </div>
 
@@ -427,12 +463,15 @@ function initGlobalLfo() {
   }
 }
 
+let currentSound = 'steel';
+
 function playNote(midiNote, velocity = 0.8) {
   if (!ctx) return;
   initGlobalLfo();
   const freq = midiToFreq(midiNote);
   const decay = parseFloat(document.getElementById('decay-slider').value);
   const cyberAmt = parseFloat(document.getElementById('cyber-slider').value);
+  const sound = currentSound;
   const now = ctx.currentTime;
 
   const carrier = ctx.createOscillator();
@@ -443,17 +482,36 @@ function playNote(midiNote, velocity = 0.8) {
   const envGain = ctx.createGain();
 
   carrier.type = 'sine';
-  mod1.type = 'sine';
+  mod1.type = sound === 'xylo' ? 'square' : 'sine';
   mod2.type = 'sine';
 
   carrier.frequency.value = freq;
-  mod1.frequency.value = freq * 2.756;
-  mod2.frequency.value = freq * 5.4;
 
-  modGain1.gain.setValueAtTime(freq * 3.5, now);
-  modGain1.gain.exponentialRampToValueAtTime(freq * 0.1, now + 0.12);
-  modGain2.gain.setValueAtTime(freq * 1.2, now);
-  modGain2.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+  if (sound === 'xylo') {
+    // 木琴: 高調波強め、速い減衰
+    mod1.frequency.value = freq * 3.0;
+    mod2.frequency.value = freq * 6.0;
+    modGain1.gain.setValueAtTime(freq * 5.0, now);
+    modGain1.gain.exponentialRampToValueAtTime(0.01, now + 0.04);
+    modGain2.gain.setValueAtTime(freq * 2.0, now);
+    modGain2.gain.exponentialRampToValueAtTime(0.01, now + 0.02);
+    envGain.gain.setValueAtTime(0, now);
+    envGain.gain.linearRampToValueAtTime(velocity, now + 0.002);
+    envGain.gain.exponentialRampToValueAtTime(velocity * 0.3, now + 0.03);
+    envGain.gain.exponentialRampToValueAtTime(0.001, now + decay * 0.5);
+  } else {
+    // スチールパン
+    mod1.frequency.value = freq * 2.756;
+    mod2.frequency.value = freq * 5.4;
+    modGain1.gain.setValueAtTime(freq * 3.5, now);
+    modGain1.gain.exponentialRampToValueAtTime(freq * 0.1, now + 0.12);
+    modGain2.gain.setValueAtTime(freq * 1.2, now);
+    modGain2.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+    envGain.gain.setValueAtTime(0, now);
+    envGain.gain.linearRampToValueAtTime(velocity * 0.9, now + 0.005);
+    envGain.gain.exponentialRampToValueAtTime(velocity * 0.4, now + 0.08);
+    envGain.gain.exponentialRampToValueAtTime(0.001, now + decay);
+  }
 
   // グローバルLFOをdetuneに接続（cent単位）
   globalLfoDepthNode.connect(carrier.detune);
@@ -471,7 +529,10 @@ function playNote(midiNote, velocity = 0.8) {
 
   carrier.connect(envGain);
 
-  // Cyber
+  // Cyber + 音量補正（cyber低いほど素の音量を上げる）
+  const dryBoost = ctx.createGain();
+  dryBoost.gain.value = 1.0 + (1 - cyberAmt) * 0.7;
+  envGain.connect(dryBoost);
   if (cyberAmt > 0.05) {
     const dist = ctx.createWaveShaper();
     const amt = cyberAmt * 200;
@@ -481,10 +542,10 @@ function playNote(midiNote, velocity = 0.8) {
       c[i] = ((Math.PI + amt) * x) / (Math.PI + amt * Math.abs(x));
     }
     dist.curve = c;
-    envGain.connect(dist);
+    dryBoost.connect(dist);
     dist.connect(masterGain);
   } else {
-    envGain.connect(masterGain);
+    dryBoost.connect(masterGain);
   }
 
   carrier.start(now);
@@ -537,26 +598,40 @@ const vibratoIndicator = document.getElementById('vibrato-indicator');
 const gyroBtn = document.getElementById('gyro-btn');
 let gyroEnabled = false;
 
+// 基準角度（リセットボタンで更新）
+let baseBeta = null;
+const MAX_CENTS = 250;   // 最大±2.5半音
+const TILT_RANGE = 25;   // この角度(deg)で最大値
+const DEAD_ZONE = 0.15;  // 中央このくらいまではほぼ変化なし
+
+// 非線形カーブ: 中央付近は甘く、傾けるほど急に効く
+function tiltCurve(x) {
+  const sign = x >= 0 ? 1 : -1;
+  const abs  = Math.abs(x);
+  if (abs < DEAD_ZONE) {
+    // デッドゾーン内: 3次曲線で超緩やか
+    return sign * (abs / DEAD_ZONE) * (abs / DEAD_ZONE) * (abs / DEAD_ZONE) * DEAD_ZONE * 0.15;
+  } else {
+    // デッドゾーン外: 2次曲線で加速
+    const t = (abs - DEAD_ZONE) / (1 - DEAD_ZONE);
+    return sign * (DEAD_ZONE * 0.15 + t * t * (1 - DEAD_ZONE * 0.15));
+  }
+}
+
+function resetBase() {
+  baseBeta = null; // 次のdeviceorientationで再設定
+}
+
 function startGyro() {
-  // 傾き角度をそのままdetuneにマッピング
-  // beta: 前後傾き(-180〜180), gamma: 左右傾き(-90〜90)
-  // 水平を基準(0)として、傾けた分だけピッチが変わる
-  const MAX_CENTS = 200; // 最大±2半音
-  const TILT_RANGE = 30; // この角度(deg)で最大値に達する
-
-  // 起動時の基準角度を記録
-  let baseBeta = null, baseGamma = null;
-
   function tiltLoop() {
     if (globalLfoDepthNode) {
-      // vibratoDepthを直接detuneオフセットとして使う（LFOなしで直結）
       globalLfoDepthNode.gain.value = vibratoDepth * MAX_CENTS;
     }
     if (Math.abs(vibratoDepth) > 0.02) {
       vibratoIndicator.textContent = 'PITCH ' + (vibratoDepth >= 0 ? '+' : '') + Math.round(vibratoDepth * MAX_CENTS) + 'ct';
       vibratoIndicator.classList.add('active');
     } else {
-      vibratoIndicator.textContent = 'VIBRATO ·';
+      vibratoIndicator.textContent = 'PITCH ·';
       vibratoIndicator.classList.remove('active');
     }
     requestAnimationFrame(tiltLoop);
@@ -565,20 +640,16 @@ function startGyro() {
 
   window.addEventListener('deviceorientation', (e) => {
     if (!gyroEnabled) return;
-    const gamma = e.gamma || 0;
-    const beta  = e.beta  || 0;
+    const beta = e.beta || 0;
 
-    // 最初のイベントで基準を設定
-    if (baseBeta === null) { baseBeta = beta; baseGamma = gamma; return; }
+    // 基準未設定なら今の角度をゼロ点に
+    if (baseBeta === null) { baseBeta = beta; return; }
 
-    // 基準からの差分
-    const dBeta  = beta  - baseBeta;
-    const dGamma = gamma - baseGamma;
-
-    // 左右傾きをメインに使う（縦持ちなら左右が自然）
-    // -TILT_RANGE〜+TILT_RANGEを-1〜+1にマッピング
-    const raw = dGamma / TILT_RANGE;
-    vibratoDepth = Math.max(-1, Math.min(1, raw));
+    // 手前に傾ける(beta減少) = ピッチアップ (+)
+    // 奥に傾ける(beta増加)  = ピッチダウン (-)
+    const raw = -(beta - baseBeta) / TILT_RANGE;
+    const clamped = Math.max(-1, Math.min(1, raw));
+    vibratoDepth = tiltCurve(clamped);
   });
   gyroEnabled = true;
 }
@@ -689,6 +760,24 @@ function updateNoteLabels(key) {
 // ─── Cyber Slider ────────────────────────────────────────────────
 document.getElementById('cyber-slider').addEventListener('input', (e) => {
   setCyberAmount(parseFloat(e.target.value));
+});
+
+document.getElementById('sound-select').addEventListener('change', (e) => {
+  currentSound = e.target.value;
+});
+
+document.getElementById('reverb-slider').addEventListener('input', (e) => {
+  const v = parseFloat(e.target.value);
+  if (reverbGain) reverbGain.gain.value = v * 0.5;
+  if (dryGain) dryGain.gain.value = 1.0 - v * 0.3;
+});
+
+document.getElementById('reset-btn').addEventListener('click', () => {
+  resetBase();
+  // フラッシュ表示
+  const btn = document.getElementById('reset-btn');
+  btn.textContent = '✓ SET';
+  setTimeout(() => { btn.textContent = '⊙ RESET'; }, 800);
 });
 </script>
 </body>
