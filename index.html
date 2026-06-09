@@ -233,6 +233,33 @@
   }
   #reset-btn:active { background: rgba(57,255,110,0.15); }
 
+  /* Mode toggle */
+  .mode-toggle {
+    display: flex;
+    gap: 0;
+    border: 1px solid #1e3d52;
+  }
+
+  .mode-btn {
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-family: 'Courier New', monospace;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    padding: 5px 14px;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .mode-btn:first-child { border-right: 1px solid #1e3d52; }
+
+  .mode-btn.active {
+    background: rgba(126,184,212,0.12);
+    color: var(--steel);
+  }
+
   /* Gyro permission button */
   #gyro-btn {
     position: fixed;
@@ -353,6 +380,17 @@
     </div>
   </div>
   <div class="ctrl-row">
+    <div class="mode-toggle">
+      <button class="mode-btn active" id="inst-btn">INST</button>
+      <button class="mode-btn" id="voice-btn">VOICE</button>
+    </div>
+    <select id="sound-select">
+      <option value="steel">STEEL</option>
+      <option value="xylo">XYLO</option>
+      <option value="bell">BELL</option>
+    </select>
+  </div>
+  <div class="ctrl-row">
     <select id="key-select">
       <option value="D">D maj</option>
       <option value="A">A maj</option>
@@ -362,11 +400,6 @@
       <option value="WT">WHOLE TONE</option>
       <option value="PENTA">PENTA Am</option>
       <option value="RYU">RYUKYU D</option>
-    </select>
-    <select id="sound-select">
-      <option value="steel">STEEL</option>
-      <option value="xylo">XYLO</option>
-      <option value="bell">BELL</option>
     </select>
     <button id="reset-btn">⊙ RESET</button>
   </div>
@@ -528,6 +561,46 @@ function playNote(midiNote, velocity = 0.8) {
     envGain.gain.linearRampToValueAtTime(velocity, now + 0.001);
     envGain.gain.exponentialRampToValueAtTime(velocity * 0.7, now + 0.06);
     envGain.gain.exponentialRampToValueAtTime(0.001, now + decay * 2.0);
+  } else if (sound === 'voxa') {
+    // 人工声アー: ノコギリ波 + 高FM指数で声帯倍音、バンドパスで母音色付け
+    carrier.type = 'sawtooth';
+    mod1.frequency.value = freq * 2.0;
+    mod2.frequency.value = freq * 5.0;
+    modGain1.gain.setValueAtTime(freq * 4.0, now);
+    modGain1.gain.exponentialRampToValueAtTime(freq * 0.5, now + 0.15);
+    modGain1.gain.exponentialRampToValueAtTime(0.01, now + decay);
+    modGain2.gain.setValueAtTime(freq * 1.5, now);
+    modGain2.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+    envGain.gain.setValueAtTime(0, now);
+    envGain.gain.linearRampToValueAtTime(velocity * 0.85, now + 0.06);
+    envGain.gain.exponentialRampToValueAtTime(velocity * 0.55, now + 0.2);
+    envGain.gain.exponentialRampToValueAtTime(0.001, now + decay * 1.2);
+  } else if (sound === 'voxr') {
+    // ロボット声: 矩形波 + 固定85Hzモジュレータで電子声帯サイドバンド
+    carrier.type = 'square';
+    mod1.frequency.value = 85;
+    mod2.frequency.value = freq * 2.0;
+    modGain1.gain.setValueAtTime(freq * 3.0, now);
+    modGain1.gain.exponentialRampToValueAtTime(freq * 0.8, now + 0.05);
+    modGain1.gain.exponentialRampToValueAtTime(0.01, now + decay * 0.8);
+    modGain2.gain.setValueAtTime(freq * 1.0, now);
+    modGain2.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+    envGain.gain.setValueAtTime(0, now);
+    envGain.gain.linearRampToValueAtTime(velocity * 0.7, now + 0.008);
+    envGain.gain.exponentialRampToValueAtTime(velocity * 0.5, now + 0.04);
+    envGain.gain.exponentialRampToValueAtTime(0.001, now + decay * 0.85);
+  } else if (sound === 'choir') {
+    // コーラス: 三角波 + 超低速LFOでビートしながら揺れる合唱感
+    carrier.type = 'triangle';
+    mod1.frequency.value = 2.5;
+    mod2.frequency.value = 3.7;
+    modGain1.gain.setValueAtTime(freq * 0.007, now);
+    modGain1.gain.exponentialRampToValueAtTime(0.001, now + decay * 1.8);
+    modGain2.gain.setValueAtTime(freq * 0.005, now);
+    modGain2.gain.exponentialRampToValueAtTime(0.001, now + decay * 1.5);
+    envGain.gain.setValueAtTime(0, now);
+    envGain.gain.linearRampToValueAtTime(velocity * 0.55, now + 0.15);
+    envGain.gain.exponentialRampToValueAtTime(0.001, now + decay * 2.0);
   } else {
     // スチールパン
     mod1.frequency.value = freq * 2.756;
@@ -550,7 +623,16 @@ function playNote(midiNote, velocity = 0.8) {
   modGain1.connect(carrier.frequency);
   modGain2.connect(carrier.frequency);
 
-  carrier.connect(envGain);
+  // VOX-A: バンドパスフィルタ2段でフォルマント母音色 (F1=900Hz, F2=1300Hz)
+  if (sound === 'voxa') {
+    const f1 = ctx.createBiquadFilter();
+    f1.type = 'bandpass'; f1.frequency.value = 900; f1.Q.value = 2.8;
+    const f2 = ctx.createBiquadFilter();
+    f2.type = 'bandpass'; f2.frequency.value = 1300; f2.Q.value = 2.2;
+    carrier.connect(f1); f1.connect(f2); f2.connect(envGain);
+  } else {
+    carrier.connect(envGain);
+  }
 
   // Cyber + 音量補正（cyber低いほど素の音量を上げる）
   const dryBoost = ctx.createGain();
@@ -571,7 +653,7 @@ function playNote(midiNote, velocity = 0.8) {
     dryBoost.connect(masterGain);
   }
 
-  const stopOffset = sound === 'bell' ? decay * 2.0 + 0.1 : decay + 0.1;
+  const stopOffset = (sound === 'bell' || sound === 'choir') ? decay * 2.0 + 0.1 : decay + 0.1;
   carrier.start(now);
   mod1.start(now);
   mod2.start(now);
@@ -674,10 +756,11 @@ function startGyro() {
     const clamped = Math.max(-1, Math.min(1, raw));
     vibratoDepth = tiltCurve(clamped);
 
-    // 左右傾き(gamma) → 音色切り替え: 左=XYLO / 中央=STEEL / 右=BELL
+    // 左右傾き(gamma) → 現在のモード内で音色切り替え
     const gamma = e.gamma || 0;
     const GAMMA_ZONE = 28;
-    const newSound = gamma < -GAMMA_ZONE ? 'xylo' : gamma > GAMMA_ZONE ? 'bell' : 'steel';
+    const group = soundGroups[soundMode];
+    const newSound = gamma < -GAMMA_ZONE ? group[0].value : gamma > GAMMA_ZONE ? group[2].value : group[1].value;
     if (newSound !== currentSound) {
       currentSound = newSound;
       document.getElementById('sound-select').value = newSound;
@@ -797,6 +880,37 @@ document.getElementById('cyber-slider').addEventListener('input', (e) => {
 document.getElementById('sound-select').addEventListener('change', (e) => {
   currentSound = e.target.value;
 });
+
+// ─── Sound Mode (INST / VOICE) ───────────────────────────────────
+const soundGroups = {
+  inst:  [
+    { value: 'xylo',  label: 'XYLO'  },
+    { value: 'steel', label: 'STEEL' },
+    { value: 'bell',  label: 'BELL'  },
+  ],
+  voice: [
+    { value: 'voxa',  label: 'VOX-A' },
+    { value: 'voxr',  label: 'VOX-R' },
+    { value: 'choir', label: 'CHOIR' },
+  ],
+};
+
+let soundMode = 'inst';
+
+function setSoundMode(mode) {
+  soundMode = mode;
+  const sel = document.getElementById('sound-select');
+  sel.innerHTML = soundGroups[mode].map(s =>
+    `<option value="${s.value}">${s.label}</option>`
+  ).join('');
+  currentSound = soundGroups[mode][1].value; // 中央のサウンドをデフォルトに
+  sel.value = currentSound;
+  document.getElementById('inst-btn').classList.toggle('active', mode === 'inst');
+  document.getElementById('voice-btn').classList.toggle('active', mode === 'voice');
+}
+
+document.getElementById('inst-btn').addEventListener('click', () => setSoundMode('inst'));
+document.getElementById('voice-btn').addEventListener('click', () => setSoundMode('voice'));
 
 document.getElementById('reverb-slider').addEventListener('input', (e) => {
   const v = parseFloat(e.target.value);
