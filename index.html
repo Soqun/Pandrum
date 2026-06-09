@@ -285,6 +285,49 @@
     background: rgba(126,184,212,0.15);
   }
 
+  /* App-level view switching */
+  .app-view { flex: 1; min-height: 0; display: flex; flex-direction: column; width: 100%; align-items: center; }
+  .app-view.hidden { display: none !important; }
+
+  /* App mode toggle (HUD) */
+  #app-mode-toggle { display: flex; gap: 0; border: 1px solid #1e3d52; }
+  #app-mode-toggle .mode-btn { padding: 4px 12px; font-size: 9px; }
+
+  /* Perc view */
+  #shake-canvas { flex: 1; min-height: 0; width: 100%; display: block; }
+
+  #perc-controls {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 16px max(18px, calc(env(safe-area-inset-bottom) + 8px));
+    justify-content: center;
+    background: rgba(7,7,13,0.85);
+    flex-shrink: 0;
+  }
+
+  .instr-btn {
+    background: transparent;
+    border: 1px solid #1e3d52;
+    color: var(--text);
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    padding: 10px 0;
+    cursor: pointer;
+    touch-action: manipulation;
+    flex: 1;
+    min-width: 72px;
+    max-width: 110px;
+  }
+
+  .instr-btn.active {
+    border-color: var(--cyber);
+    color: var(--cyber);
+    box-shadow: 0 0 8px rgba(57,255,110,0.25);
+  }
+
   /* Note flash */
   .note-label {
     fill: var(--steel);
@@ -301,10 +344,14 @@
 
 <div id="hud">
   <span id="title">PANDRUM</span>
+  <div id="app-mode-toggle" class="mode-toggle">
+    <button class="mode-btn active" id="drum-mode-btn">DRUM</button>
+    <button class="mode-btn" id="perc-mode-btn">PERC</button>
+  </div>
   <span id="vibrato-indicator">VIBRATO ·</span>
-  <span id="debug-val" style="font-size:10px;color:#39ff6e;letter-spacing:0.1em;"></span>
 </div>
 
+<div id="drum-view" class="app-view">
 <div id="drum-area">
 <div id="drum-container">
   <svg id="pads-svg" viewBox="0 0 200 200">
@@ -404,8 +451,19 @@
     <button id="reset-btn">⊙ RESET</button>
   </div>
 </div>
+</div><!-- #drum-view -->
 
-<button id="gyro-btn">ENABLE VIBRATO</button>
+<div id="perc-view" class="app-view hidden">
+  <canvas id="shake-canvas"></canvas>
+  <div id="perc-controls">
+    <button class="instr-btn active" data-instr="shaker">SHAKER</button>
+    <button class="instr-btn" data-instr="tamb">TAMB</button>
+    <button class="instr-btn" data-instr="cabasa">CABASA</button>
+    <button class="instr-btn" data-instr="bells">BELLS</button>
+  </div>
+</div>
+
+<button id="gyro-btn">ENABLE MOTION</button>
 
 <script>
 // ─── Audio Context ───────────────────────────────────────────────
@@ -714,9 +772,9 @@ let gyroEnabled = false;
 
 // 基準角度（リセットボタンで更新）
 let baseBeta = null;
-const MAX_CENTS = 100;   // 最大±1半音
-const TILT_RANGE = 25;   // この角度(deg)で最大値
-const DEAD_ZONE = 0.15;  // 中央このくらいまではほぼ変化なし
+const MAX_CENTS = 80;    // 最大±0.8半音
+const TILT_RANGE = 50;   // この角度(deg)で最大値 (広げて階段感を軽減)
+const DEAD_ZONE = 0.2;   // デッドゾーン少し広めに
 
 // 非線形カーブ: 中央付近は甘く、傾けるほど急に効く
 function tiltCurve(x) {
@@ -764,14 +822,25 @@ function startGyro() {
     const clamped = Math.max(-1, Math.min(1, raw));
     vibratoDepth = tiltCurve(clamped);
 
-    // 左右傾き(gamma) → 現在のモード内で音色切り替え
+    // 左右傾き(gamma)
     const gamma = e.gamma || 0;
-    const GAMMA_ZONE = 28;
-    const group = soundGroups[soundMode];
-    const newSound = gamma < -GAMMA_ZONE ? group[0].value : gamma > GAMMA_ZONE ? group[2].value : group[1].value;
-    if (newSound !== currentSound) {
-      currentSound = newSound;
-      document.getElementById('sound-select').value = newSound;
+    if (appMode === 'perc') {
+      // PERCモード: 4ゾーンで楽器切り替え
+      const iIdx = gamma < -45 ? 0 : gamma < -10 ? 1 : gamma < 20 ? 2 : 3;
+      const newInstr = percInstrList[iIdx].id;
+      if (newInstr !== currentPercInstr) {
+        currentPercInstr = newInstr;
+        document.querySelectorAll('.instr-btn').forEach((b, i) => b.classList.toggle('active', i === iIdx));
+      }
+    } else {
+      // DRUMモード: TILT選択時のみgammaで音色切り替え
+      const sel = document.getElementById('sound-select');
+      if (sel.value === 'tilt') {
+        const GAMMA_ZONE = 28;
+        const group = soundGroups[soundMode];
+        const newSound = gamma < -GAMMA_ZONE ? group[0].value : gamma > GAMMA_ZONE ? group[2].value : group[1].value;
+        if (newSound !== currentSound) currentSound = newSound;
+      }
     }
   });
   gyroEnabled = true;
@@ -783,6 +852,7 @@ const needsGyroPermission =
 
 if (!needsGyroPermission && typeof DeviceOrientationEvent !== 'undefined') {
   startGyro();
+  startMotion();
 } else if (typeof DeviceOrientationEvent === 'undefined') {
   vibratoIndicator.textContent = 'VIBRATO N/A';
 }
@@ -798,7 +868,7 @@ function maybeShowGyroBtn() {
 gyroBtn.addEventListener('touchend', (e) => {
   e.preventDefault();
   DeviceOrientationEvent.requestPermission().then(state => {
-    if (state === 'granted') startGyro();
+    if (state === 'granted') { startGyro(); startMotion(); }
     gyroBtn.style.display = 'none';
   }).catch(() => {
     gyroBtn.style.display = 'none';
@@ -886,7 +956,8 @@ document.getElementById('cyber-slider').addEventListener('input', (e) => {
 });
 
 document.getElementById('sound-select').addEventListener('change', (e) => {
-  currentSound = e.target.value;
+  const v = e.target.value;
+  if (v !== 'tilt') currentSound = v; // TILT選択時はgammaに委ねる
 });
 
 // ─── Sound Mode (INST / VOICE) ───────────────────────────────────
@@ -908,11 +979,10 @@ let soundMode = 'inst';
 function setSoundMode(mode) {
   soundMode = mode;
   const sel = document.getElementById('sound-select');
-  sel.innerHTML = soundGroups[mode].map(s =>
-    `<option value="${s.value}">${s.label}</option>`
-  ).join('');
-  currentSound = soundGroups[mode][1].value; // 中央のサウンドをデフォルトに
-  sel.value = currentSound;
+  const opts = soundGroups[mode].map(s => `<option value="${s.value}">${s.label}</option>`).join('');
+  sel.innerHTML = opts + '<option value="tilt">TILT</option>';
+  sel.value = 'tilt'; // デフォルトはTILTモード
+  currentSound = soundGroups[mode][1].value;
   document.getElementById('inst-btn').classList.toggle('active', mode === 'inst');
   document.getElementById('voice-btn').classList.toggle('active', mode === 'voice');
 }
@@ -928,11 +998,248 @@ document.getElementById('reverb-slider').addEventListener('input', (e) => {
 
 document.getElementById('reset-btn').addEventListener('click', () => {
   resetBase();
-  // フラッシュ表示
   const btn = document.getElementById('reset-btn');
   btn.textContent = '✓ SET';
   setTimeout(() => { btn.textContent = '⊙ RESET'; }, 800);
 });
+
+// ─── App Mode (DRUM / PERC) ──────────────────────────────────────
+let appMode = 'drum';
+
+function setAppMode(mode) {
+  appMode = mode;
+  document.getElementById('drum-view').classList.toggle('hidden', mode !== 'drum');
+  document.getElementById('perc-view').classList.toggle('hidden', mode !== 'perc');
+  document.getElementById('drum-mode-btn').classList.toggle('active', mode === 'drum');
+  document.getElementById('perc-mode-btn').classList.toggle('active', mode === 'perc');
+  if (mode === 'perc' && needsGyroPermission && !gyroEnabled) {
+    gyroBtn.style.display = 'block';
+  }
+}
+
+document.getElementById('drum-mode-btn').addEventListener('click', () => setAppMode('drum'));
+document.getElementById('perc-mode-btn').addEventListener('click', () => setAppMode('perc'));
+
+// ─── Perc: Shake Detection ───────────────────────────────────────
+const percInstrList = [
+  { id: 'shaker', name: 'SHAKER' },
+  { id: 'tamb',   name: 'TAMB'   },
+  { id: 'cabasa', name: 'CABASA' },
+  { id: 'bells',  name: 'BELLS'  },
+];
+
+let currentPercInstr = 'shaker';
+let shakeIntensity = 0;
+let lastAccel = { x: 0, y: 0, z: 0 };
+let motionEnabled = false;
+
+function startMotion() {
+  if (motionEnabled) return;
+  motionEnabled = true;
+  window.addEventListener('devicemotion', (e) => {
+    if (appMode !== 'perc') return;
+    const acc = e.accelerationIncludingGravity || e.acceleration;
+    if (!acc) return;
+    const ax = acc.x || 0, ay = acc.y || 0, az = acc.z || 0;
+    const dx = ax - lastAccel.x, dy = ay - lastAccel.y, dz = az - lastAccel.z;
+    lastAccel = { x: ax, y: ay, z: az };
+    const delta = Math.sqrt(dx*dx + dy*dy + dz*dz);
+    const intensity = Math.min(1, delta / 18);
+    if (intensity > 0.06) {
+      initAudio();
+      playPercSound(currentPercInstr, intensity);
+    }
+    shakeIntensity = Math.max(shakeIntensity * 0.82, intensity);
+  }, { passive: true });
+}
+
+// Tap-to-shake fallback for devices without motion API
+document.getElementById('shake-canvas').addEventListener('touchstart', (e) => {
+  if (appMode !== 'perc') return;
+  e.preventDefault();
+  initAudio();
+  playPercSound(currentPercInstr, 0.6 + Math.random() * 0.3);
+  shakeIntensity = Math.max(shakeIntensity, 0.7);
+}, { passive: false });
+document.getElementById('shake-canvas').addEventListener('mousedown', () => {
+  if (appMode !== 'perc') return;
+  initAudio();
+  playPercSound(currentPercInstr, 0.5 + Math.random() * 0.4);
+  shakeIntensity = Math.max(shakeIntensity, 0.6);
+});
+
+// Instrument button handlers
+document.querySelectorAll('.instr-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    currentPercInstr = btn.dataset.instr;
+    document.querySelectorAll('.instr-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+
+// ─── Perc: Sound Synthesis ───────────────────────────────────────
+function noiseBuffer(duration) {
+  const len = Math.floor(ctx.sampleRate * duration);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  return buf;
+}
+
+function playPercSound(instr, intensity) {
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  spawnParticles(intensity);
+  switch (instr) {
+    case 'shaker':  playShaker(now, intensity);  break;
+    case 'tamb':    playTamb(now, intensity);    break;
+    case 'cabasa':  playCabasa(now, intensity);  break;
+    case 'bells':   playSleighBells(now, intensity); break;
+  }
+}
+
+function playShaker(now, v) {
+  const dur = 0.06 + v * 0.04;
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer(dur);
+  const f = ctx.createBiquadFilter();
+  f.type = 'bandpass'; f.frequency.value = 4800; f.Q.value = 1.4;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(v * 0.9, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+  src.connect(f); f.connect(g); g.connect(masterGain);
+  src.start(now); src.stop(now + dur);
+}
+
+function playTamb(now, v) {
+  const count = Math.floor(4 + v * 6);
+  for (let i = 0; i < count; i++) {
+    const t = now + i * (0.008 + Math.random() * 0.018);
+    const freq = 3000 + Math.random() * 1800;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    const g = ctx.createGain();
+    const decay = 0.03 + Math.random() * 0.05;
+    g.gain.setValueAtTime(v * 0.18, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + decay);
+    osc.connect(g); g.connect(masterGain);
+    osc.start(t); osc.stop(t + decay + 0.01);
+  }
+}
+
+function playCabasa(now, v) {
+  const dur = 0.09 + v * 0.06;
+  const src = ctx.createBufferSource();
+  src.buffer = noiseBuffer(dur);
+  const f = ctx.createBiquadFilter();
+  f.type = 'bandpass'; f.frequency.value = 1400; f.Q.value = 0.9;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(v * 0.85, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+  src.connect(f); f.connect(g); g.connect(masterGain);
+  src.start(now); src.stop(now + dur);
+}
+
+function playSleighBells(now, v) {
+  const count = Math.floor(5 + v * 7);
+  for (let i = 0; i < count; i++) {
+    const t = now + i * (0.004 + Math.random() * 0.012);
+    const freq = 5200 + Math.random() * 3200;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    const g = ctx.createGain();
+    const decay = 0.015 + Math.random() * 0.035;
+    g.gain.setValueAtTime(v * 0.14, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + decay);
+    osc.connect(g); g.connect(masterGain);
+    osc.start(t); osc.stop(t + decay + 0.005);
+  }
+}
+
+// ─── Perc: Shake Canvas ──────────────────────────────────────────
+const shakeCanvas = document.getElementById('shake-canvas');
+const sCtx = shakeCanvas.getContext('2d');
+const percParticles = [];
+
+function resizeShakeCanvas() {
+  shakeCanvas.width = shakeCanvas.offsetWidth;
+  shakeCanvas.height = shakeCanvas.offsetHeight;
+}
+window.addEventListener('resize', resizeShakeCanvas);
+resizeShakeCanvas();
+
+function spawnParticles(intensity) {
+  const cx = shakeCanvas.width / 2, cy = shakeCanvas.height / 2;
+  const count = Math.floor(6 + intensity * 14);
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 2 + intensity * 9;
+    const col = intensity > 0.7 ? '#c8a44a' : intensity > 0.4 ? '#39ff6e' : '#7eb8d4';
+    percParticles.push({ x: cx, y: cy, vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed,
+      life: 1, size: 1.5 + intensity * 3.5, color: col });
+  }
+}
+
+function drawShakeFrame() {
+  const w = shakeCanvas.width, h = shakeCanvas.height;
+  const cx = w / 2, cy = h / 2;
+  const r = Math.min(w, h) * 0.3;
+
+  sCtx.fillStyle = 'rgba(7,7,13,0.3)';
+  sCtx.fillRect(0, 0, w, h);
+
+  // Background ring
+  sCtx.beginPath();
+  sCtx.arc(cx, cy, r, 0, Math.PI * 2);
+  sCtx.strokeStyle = 'rgba(126,184,212,0.1)';
+  sCtx.lineWidth = 1;
+  sCtx.stroke();
+
+  // Intensity arc
+  const arc = Math.PI * 2 * Math.min(shakeIntensity, 1);
+  sCtx.beginPath();
+  sCtx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + arc);
+  sCtx.strokeStyle = `rgba(57,255,110,${0.3 + shakeIntensity * 0.7})`;
+  sCtx.lineWidth = 2.5;
+  sCtx.stroke();
+
+  // Instrument label
+  const instr = percInstrList.find(i => i.id === currentPercInstr);
+  sCtx.textAlign = 'center';
+  sCtx.textBaseline = 'middle';
+  const fs = Math.max(14, Math.floor(w * 0.065));
+  sCtx.font = `${fs}px 'Courier New', monospace`;
+  sCtx.fillStyle = `rgba(126,184,212,${0.55 + shakeIntensity * 0.45})`;
+  sCtx.fillText(instr ? instr.name : '', cx, cy);
+
+  if (shakeIntensity < 0.05) {
+    sCtx.font = `${Math.floor(fs * 0.55)}px 'Courier New', monospace`;
+    sCtx.fillStyle = 'rgba(74,122,138,0.45)';
+    sCtx.fillText('SHAKE  OR  TAP', cx, cy + r * 0.55);
+  }
+
+  // Particles
+  for (let i = percParticles.length - 1; i >= 0; i--) {
+    const p = percParticles[i];
+    p.x += p.vx; p.y += p.vy;
+    p.vx *= 0.94; p.vy *= 0.94;
+    p.life -= 0.035;
+    if (p.life <= 0) { percParticles.splice(i, 1); continue; }
+    sCtx.beginPath();
+    sCtx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+    sCtx.fillStyle = p.color;
+    sCtx.globalAlpha = p.life * 0.8;
+    sCtx.fill();
+    sCtx.globalAlpha = 1;
+  }
+
+  shakeIntensity *= 0.88;
+  requestAnimationFrame(drawShakeFrame);
+}
+drawShakeFrame();
+
 </script>
 </body>
 </html>
