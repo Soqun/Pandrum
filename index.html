@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>PANDRUM</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  :root {
+    --bg: #07070d;
+    --steel: #7eb8d4;
+    --cyber: #39ff6e;
+    --gold: #c8a44a;
+    --rim: #1a2a35;
+    --pad-idle: #0f1e27;
+    --pad-active: #1c3d52;
+    --text: #4a7a8a;
+  }
+
+  body {
+    background: var(--bg);
+    width: 100vw;
+    height: 100dvh;
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    touch-action: none;
+  }
+
+  #hud {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    padding: 12px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 10;
+  }
+
+  #title {
+    font-size: 11px;
+    letter-spacing: 0.4em;
+    color: var(--text);
+  }
+
+  #vibrato-indicator {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    color: var(--text);
+    transition: color 0.1s;
+  }
+
+  #vibrato-indicator.active {
+    color: var(--cyber);
+    text-shadow: 0 0 8px var(--cyber);
+  }
+
+  #drum-container {
+    position: relative;
+    width: min(90vw, 90dvh);
+    height: min(90vw, 90dvh);
+  }
+
+  /* Outer rim */
+  #drum-container::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at 30% 25%, #1e3a4a, #0a1a22 60%, #05090e);
+    box-shadow:
+      0 0 0 3px #0f2030,
+      0 0 0 6px #1a3545,
+      0 0 40px rgba(126,184,212,0.08),
+      inset 0 0 60px rgba(0,0,0,0.8);
+  }
+
+  /* Inner depression */
+  #drum-container::after {
+    content: '';
+    position: absolute;
+    inset: 8%;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at 40% 30%, #0d1e28, #060c12);
+    box-shadow: inset 0 0 30px rgba(0,0,0,0.9), inset 0 2px 4px rgba(126,184,212,0.05);
+  }
+
+  #pads-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+  }
+
+  .pad-group { cursor: pointer; }
+
+  .pad-shape {
+    fill: var(--pad-idle);
+    stroke: #1e3d52;
+    stroke-width: 1.5;
+    transition: fill 0.05s;
+  }
+
+  .pad-group.hit .pad-shape {
+    fill: var(--pad-active);
+  }
+
+  .pad-highlight {
+    fill: none;
+    stroke: var(--steel);
+    stroke-width: 0.5;
+    opacity: 0.2;
+  }
+
+  #center-pad {
+    cursor: pointer;
+  }
+
+  #center-circle {
+    fill: #0d1e28;
+    stroke: #1e3d52;
+    stroke-width: 1.5;
+  }
+
+  #center-circle.hit {
+    fill: #1c3d52;
+  }
+
+  /* Ripple canvas overlay */
+  #ripple-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 3;
+    pointer-events: none;
+    border-radius: 50%;
+    overflow: hidden;
+  }
+
+  /* Controls */
+  #controls {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    padding: 16px 24px;
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+
+  .knob-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .knob-label {
+    font-size: 9px;
+    letter-spacing: 0.25em;
+    color: var(--text);
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 80px;
+    height: 2px;
+    background: linear-gradient(to right, var(--steel), var(--rim));
+    border-radius: 1px;
+    outline: none;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--steel);
+    box-shadow: 0 0 6px var(--steel);
+    cursor: pointer;
+  }
+
+  #key-select {
+    background: transparent;
+    border: 1px solid #1e3d52;
+    color: var(--steel);
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    padding: 4px 8px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  #key-select option {
+    background: #0a1a22;
+  }
+
+  /* Gyro permission button */
+  #gyro-btn {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(7,7,13,0.92);
+    border: 1px solid var(--steel);
+    color: var(--steel);
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    letter-spacing: 0.2em;
+    padding: 18px 28px;
+    cursor: pointer;
+    z-index: 9999;
+    box-shadow: 0 0 24px rgba(126,184,212,0.35), 0 0 0 1px rgba(126,184,212,0.1);
+    display: none;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  #gyro-btn:active {
+    background: rgba(126,184,212,0.15);
+  }
+
+  /* Note flash */
+  .note-label {
+    fill: var(--steel);
+    font-size: 10px;
+    font-family: 'Courier New', monospace;
+    opacity: 0.5;
+    pointer-events: none;
+    text-anchor: middle;
+    dominant-baseline: central;
+  }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <span id="title">PANDRUM</span>
+  <span id="vibrato-indicator">VIBRATO ·</span>
+  <span id="debug-val" style="font-size:10px;color:#39ff6e;letter-spacing:0.1em;"></span>
+</div>
+
+<div id="drum-container">
+  <svg id="pads-svg" viewBox="0 0 200 200">
+    <defs>
+      <radialGradient id="padGrad" cx="35%" cy="30%">
+        <stop offset="0%" stop-color="#1e3d52"/>
+        <stop offset="100%" stop-color="#0d1e28"/>
+      </radialGradient>
+      <filter id="glow">
+        <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+        <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+
+    <!-- 8 outer pads -->
+    <g id="pad-0" class="pad-group" data-index="0">
+      <ellipse class="pad-shape" cx="100" cy="30" rx="18" ry="12" transform="rotate(0,100,100)"/>
+      <text class="note-label" x="100.0" y="30.0">D5</text>
+    </g>
+    <g id="pad-1" class="pad-group" data-index="1">
+      <ellipse class="pad-shape" cx="100" cy="30" rx="18" ry="12" transform="rotate(45,100,100)"/>
+      <text class="note-label" x="149.5" y="50.5">F#5</text>
+    </g>
+    <g id="pad-2" class="pad-group" data-index="2">
+      <ellipse class="pad-shape" cx="100" cy="30" rx="18" ry="12" transform="rotate(90,100,100)"/>
+      <text class="note-label" x="170.0" y="100.0">A5</text>
+    </g>
+    <g id="pad-3" class="pad-group" data-index="3">
+      <ellipse class="pad-shape" cx="100" cy="30" rx="18" ry="12" transform="rotate(135,100,100)"/>
+      <text class="note-label" x="149.5" y="149.5">B5</text>
+    </g>
+    <g id="pad-4" class="pad-group" data-index="4">
+      <ellipse class="pad-shape" cx="100" cy="30" rx="18" ry="12" transform="rotate(180,100,100)"/>
+      <text class="note-label" x="100.0" y="170.0">C#5</text>
+    </g>
+    <g id="pad-5" class="pad-group" data-index="5">
+      <ellipse class="pad-shape" cx="100" cy="30" rx="18" ry="12" transform="rotate(225,100,100)"/>
+      <text class="note-label" x="50.5" y="149.5">E5</text>
+    </g>
+    <g id="pad-6" class="pad-group" data-index="6">
+      <ellipse class="pad-shape" cx="100" cy="30" rx="18" ry="12" transform="rotate(270,100,100)"/>
+      <text class="note-label" x="30.0" y="100.0">G5</text>
+    </g>
+    <g id="pad-7" class="pad-group" data-index="7">
+      <ellipse class="pad-shape" cx="100" cy="30" rx="18" ry="12" transform="rotate(315,100,100)"/>
+      <text class="note-label" x="50.5" y="50.5">A#5</text>
+    </g>
+
+    <!-- Center pad -->
+    <g id="center-pad">
+      <circle id="center-circle" cx="100" cy="100" r="22"/>
+      <text class="note-label" x="100" y="100">D4</text>
+    </g>
+  </svg>
+
+  <canvas id="ripple-canvas"></canvas>
+</div>
+
+<div id="controls">
+  <div class="knob-group">
+    <span class="knob-label">DECAY</span>
+    <input type="range" id="decay-slider" min="0.5" max="4" step="0.1" value="2">
+  </div>
+  <select id="key-select">
+    <option value="D">D maj</option>
+    <option value="A">A maj</option>
+    <option value="G">G maj</option>
+    <option value="E">E min</option>
+    <option value="C">C maj</option>
+  </select>
+  <div class="knob-group">
+    <span class="knob-label">CYBER</span>
+    <input type="range" id="cyber-slider" min="0" max="1" step="0.01" value="0.3">
+  </div>
+</div>
+
+<button id="gyro-btn">ENABLE VIBRATO</button>
+
+<script>
+// ─── Audio Context ───────────────────────────────────────────────
+let ctx = null;
+let masterGain, distortion, convolver, reverbGain, dryGain;
+
+function initAudio() {
+  if (ctx) return;
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+  masterGain = ctx.createGain();
+  masterGain.gain.value = 0.7;
+
+  // Distortion (cyber effect)
+  distortion = ctx.createWaveShaper();
+  setCyberAmount(parseFloat(document.getElementById('cyber-slider').value));
+
+  // Simple reverb via delay network
+  const delay1 = ctx.createDelay(0.5);
+  const delay2 = ctx.createDelay(0.3);
+  const fb1 = ctx.createGain();
+  const fb2 = ctx.createGain();
+  delay1.delayTime.value = 0.11;
+  delay2.delayTime.value = 0.17;
+  fb1.gain.value = 0.35;
+  fb2.gain.value = 0.28;
+
+  reverbGain = ctx.createGain();
+  reverbGain.gain.value = 0.25;
+  dryGain = ctx.createGain();
+  dryGain.gain.value = 1.0;
+
+  // dry path
+  masterGain.connect(dryGain);
+  dryGain.connect(ctx.destination);
+
+  // reverb path
+  masterGain.connect(reverbGain);
+  reverbGain.connect(delay1);
+  reverbGain.connect(delay2);
+  delay1.connect(fb1); fb1.connect(delay1);
+  delay2.connect(fb2); fb2.connect(delay2);
+  delay1.connect(ctx.destination);
+  delay2.connect(ctx.destination);
+}
+
+function setCyberAmount(v) {
+  if (!distortion) return;
+  const amount = v * 400;
+  const curve = new Float32Array(256);
+  for (let i = 0; i < 256; i++) {
+    const x = (i * 2) / 256 - 1;
+    curve[i] = amount ? ((Math.PI + amount) * x) / (Math.PI + amount * Math.abs(x)) : x;
+  }
+  distortion.curve = curve;
+}
+
+// ─── Scale Definitions ───────────────────────────────────────────
+const scales = {
+  D:  [62, 66, 69, 71, 73, 74, 76, 78, 50], // D maj pentatonic-ish
+  A:  [69, 73, 76, 78, 80, 81, 83, 85, 57],
+  G:  [67, 71, 74, 76, 78, 79, 81, 83, 55],
+  E:  [64, 67, 71, 74, 76, 77, 79, 81, 52],
+  C:  [60, 64, 67, 69, 71, 72, 74, 76, 48],
+};
+let currentNotes = scales['D'];
+
+function midiToFreq(midi) {
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+// ─── Global Vibrato ──────────────────────────────────────────────
+// vibratoDepth: 0..1、startGyroが書き換える
+let vibratoDepth = 0;
+
+// グローバルLFO: 一度だけ作って全carrierのdetuneに接続
+// detuneはcent単位 (100cent = 1半音, 300cent = 3半音)
+let globalLfo = null;
+let globalLfoDepthNode = null; // GainNode、gainがデプス(cent)
+let lfoInitialized = false;
+
+function initGlobalLfo() {
+  if (lfoInitialized) return;
+  lfoInitialized = true;
+  globalLfo = ctx.createOscillator();
+  globalLfoDepthNode = ctx.createGain();
+  globalLfo.type = 'sine';
+  globalLfo.frequency.value = 6; // 6Hz
+  globalLfoDepthNode.gain.value = 0;
+  globalLfo.connect(globalLfoDepthNode);
+  // globalLfoDepthNodeの出力は各carrierのdetuneへ（playNote内で接続）
+  globalLfo.start();
+
+  // rAFループでvibratoDepthをgainに反映
+  function sync() {
+    // MAX 300cent = 3半音
+    globalLfoDepthNode.gain.value = vibratoDepth * 300;
+    requestAnimationFrame(sync);
+  }
+  sync();
+}
+
+function playNote(midiNote, velocity = 0.8) {
+  if (!ctx) return;
+  initGlobalLfo();
+  const freq = midiToFreq(midiNote);
+  const decay = parseFloat(document.getElementById('decay-slider').value);
+  const cyberAmt = parseFloat(document.getElementById('cyber-slider').value);
+  const now = ctx.currentTime;
+
+  const carrier = ctx.createOscillator();
+  const mod1 = ctx.createOscillator();
+  const mod2 = ctx.createOscillator();
+  const modGain1 = ctx.createGain();
+  const modGain2 = ctx.createGain();
+  const envGain = ctx.createGain();
+
+  carrier.type = 'sine';
+  mod1.type = 'sine';
+  mod2.type = 'sine';
+
+  carrier.frequency.value = freq;
+  mod1.frequency.value = freq * 2.756;
+  mod2.frequency.value = freq * 5.4;
+
+  modGain1.gain.setValueAtTime(freq * 3.5, now);
+  modGain1.gain.exponentialRampToValueAtTime(freq * 0.1, now + 0.12);
+  modGain2.gain.setValueAtTime(freq * 1.2, now);
+  modGain2.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+
+  // グローバルLFOをdetuneに接続（cent単位）
+  globalLfoDepthNode.connect(carrier.detune);
+
+  // Envelope
+  envGain.gain.setValueAtTime(0, now);
+  envGain.gain.linearRampToValueAtTime(velocity * 0.9, now + 0.005);
+  envGain.gain.exponentialRampToValueAtTime(velocity * 0.4, now + 0.08);
+  envGain.gain.exponentialRampToValueAtTime(0.001, now + decay);
+
+  mod1.connect(modGain1);
+  mod2.connect(modGain2);
+  modGain1.connect(carrier.frequency);
+  modGain2.connect(carrier.frequency);
+
+  carrier.connect(envGain);
+
+  // Cyber
+  if (cyberAmt > 0.05) {
+    const dist = ctx.createWaveShaper();
+    const amt = cyberAmt * 200;
+    const c = new Float32Array(256);
+    for (let i = 0; i < 256; i++) {
+      const x = (i * 2) / 256 - 1;
+      c[i] = ((Math.PI + amt) * x) / (Math.PI + amt * Math.abs(x));
+    }
+    dist.curve = c;
+    envGain.connect(dist);
+    dist.connect(masterGain);
+  } else {
+    envGain.connect(masterGain);
+  }
+
+  carrier.start(now);
+  mod1.start(now);
+  mod2.start(now);
+  carrier.stop(now + decay + 0.1);
+  mod1.stop(now + decay + 0.1);
+  mod2.stop(now + decay + 0.1);
+}
+
+// ─── Ripple Canvas ───────────────────────────────────────────────
+const canvas = document.getElementById('ripple-canvas');
+const rctx = canvas.getContext('2d');
+const ripples = [];
+
+function resizeCanvas() {
+  const container = document.getElementById('drum-container');
+  const size = container.offsetWidth;
+  canvas.width = size;
+  canvas.height = size;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+function addRipple(x, y, color) {
+  ripples.push({ x, y, r: 0, maxR: 60, alpha: 0.8, color });
+}
+
+function animateRipples() {
+  rctx.clearRect(0, 0, canvas.width, canvas.height);
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    const rp = ripples[i];
+    rp.r += 2.5;
+    rp.alpha *= 0.92;
+    if (rp.alpha < 0.01 || rp.r > rp.maxR) { ripples.splice(i, 1); continue; }
+    rctx.beginPath();
+    rctx.arc(rp.x, rp.y, rp.r, 0, Math.PI * 2);
+    rctx.strokeStyle = rp.color;
+    rctx.globalAlpha = rp.alpha;
+    rctx.lineWidth = 1.5;
+    rctx.stroke();
+    rctx.globalAlpha = 1;
+  }
+  requestAnimationFrame(animateRipples);
+}
+animateRipples();
+
+// ─── Gyroscope / Vibrato ──────────────────────────────────────────
+const vibratoIndicator = document.getElementById('vibrato-indicator');
+const gyroBtn = document.getElementById('gyro-btn');
+let gyroEnabled = false;
+
+function startGyro() {
+  let lastGamma = null, lastBeta = null, lastTime = null;
+  let envelope = 0;
+
+  function decayLoop() {
+    envelope *= 0.88;
+    vibratoDepth = envelope;
+    if (envelope > 0.02) {
+      vibratoIndicator.textContent = 'VIBRATO ' + Math.round(envelope * 100) + '%';
+      vibratoIndicator.classList.add('active');
+      const dbg = document.getElementById('debug-val');
+      if (dbg) dbg.textContent = 'depth:' + envelope.toFixed(3) + ' lfo:' + (globalLfoDepthNode ? globalLfoDepthNode.gain.value.toFixed(0) : '?') + 'ct';
+    } else {
+      vibratoDepth = 0;
+      vibratoIndicator.textContent = 'VIBRATO ·';
+      vibratoIndicator.classList.remove('active');
+    }
+    requestAnimationFrame(decayLoop);
+  }
+  decayLoop();
+
+  window.addEventListener('deviceorientation', (e) => {
+    if (!gyroEnabled) return;
+    const gamma = e.gamma || 0;
+    const beta  = e.beta  || 0;
+    const now   = Date.now();
+
+    if (lastGamma !== null) {
+      const dt = Math.max((now - lastTime) / 1000, 0.016);
+      const dg = gamma - lastGamma;
+      const db = beta  - lastBeta;
+      const angVel = Math.sqrt(dg * dg + db * db) / dt;
+      const kick = Math.min(angVel / 200, 1.0);
+      if (kick > 0.05) envelope = Math.min(envelope + kick, 1.0);
+    }
+
+    lastGamma = gamma;
+    lastBeta  = beta;
+    lastTime  = now;
+  });
+  gyroEnabled = true;
+}
+
+const needsGyroPermission =
+  typeof DeviceOrientationEvent !== 'undefined' &&
+  typeof DeviceOrientationEvent.requestPermission === 'function';
+
+if (!needsGyroPermission && typeof DeviceOrientationEvent !== 'undefined') {
+  startGyro();
+} else if (typeof DeviceOrientationEvent === 'undefined') {
+  vibratoIndicator.textContent = 'VIBRATO N/A';
+}
+
+let gyroPromptShown = false;
+function maybeShowGyroBtn() {
+  if (!gyroPromptShown && needsGyroPermission && !gyroEnabled) {
+    gyroPromptShown = true;
+    gyroBtn.style.display = 'block';
+  }
+}
+
+gyroBtn.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  DeviceOrientationEvent.requestPermission().then(state => {
+    if (state === 'granted') startGyro();
+    gyroBtn.style.display = 'none';
+  }).catch(() => {
+    gyroBtn.style.display = 'none';
+  });
+});
+
+// ─── Pad Hit Logic ───────────────────────────────────────────────
+function hitPad(index, svgX, svgY) {
+  initAudio();
+  maybeShowGyroBtn();
+  const note = currentNotes[index];
+  const vel = 0.6 + Math.random() * 0.3;
+  playNote(note, vel);
+
+  // SVG coords → canvas coords
+  const container = document.getElementById('drum-container');
+  const size = container.offsetWidth;
+  const cx = (svgX / 200) * size;
+  const cy = (svgY / 200) * size;
+
+  // Color: alternating steel/gold/cyber
+  const colors = ['rgba(126,184,212,0.9)', 'rgba(200,164,74,0.9)', 'rgba(57,255,110,0.7)'];
+  addRipple(cx, cy, colors[index % 3]);
+
+  // Visual flash
+  const el = index === 8
+    ? document.getElementById('center-circle')
+    : document.getElementById(`pad-${index}`);
+
+  if (el) {
+    if (index === 8) {
+      el.classList.add('hit');
+      setTimeout(() => el.classList.remove('hit'), 120);
+    } else {
+      el.classList.add('hit');
+      setTimeout(() => el.classList.remove('hit'), 120);
+    }
+  }
+}
+
+// Get SVG center of each pad
+const padCenters = [
+  { x: 100, y: 30 }, // will be transformed — approximate
+];
+
+// Attach events to pad groups
+for (let i = 0; i < 8; i++) {
+  const pad = document.getElementById(`pad-${i}`);
+  const angle = (i * 45) * Math.PI / 180;
+  const cx = 100 + 70 * Math.sin(angle);
+  const cy = 100 - 70 * Math.cos(angle);
+
+  const onHit = (e) => {
+    e.preventDefault();
+    hitPad(i, cx, cy);
+  };
+  pad.addEventListener('touchstart', onHit, { passive: false });
+  pad.addEventListener('mousedown', onHit);
+}
+
+const centerPad = document.getElementById('center-pad');
+centerPad.addEventListener('touchstart', (e) => { e.preventDefault(); hitPad(8, 100, 100); }, { passive: false });
+centerPad.addEventListener('mousedown', () => hitPad(8, 100, 100));
+
+// ─── Key Select ──────────────────────────────────────────────────
+document.getElementById('key-select').addEventListener('change', (e) => {
+  currentNotes = scales[e.target.value];
+  updateNoteLabels(e.target.value);
+});
+
+function updateNoteLabels(key) {
+  const noteNames = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  const notes = scales[key];
+  for (let i = 0; i < 8; i++) {
+    const label = document.querySelector(`#pad-${i} .note-label`);
+    if (label) label.textContent = noteNames[notes[i] % 12] + Math.floor(notes[i] / 12 - 1);
+  }
+  const centerLabel = document.querySelector('#center-pad .note-label');
+  if (centerLabel) centerLabel.textContent = noteNames[notes[8] % 12] + Math.floor(notes[8] / 12 - 1);
+}
+
+// ─── Cyber Slider ────────────────────────────────────────────────
+document.getElementById('cyber-slider').addEventListener('input', (e) => {
+  setCyberAmount(parseFloat(e.target.value));
+});
+</script>
+</body>
+</html>
