@@ -460,6 +460,12 @@
     <button class="instr-btn" data-instr="tamb">TAMB</button>
     <button class="instr-btn" data-instr="cabasa">CABASA</button>
     <button class="instr-btn" data-instr="bells">BELLS</button>
+    <div class="ctrl-row" style="width:100%;margin-top:4px;">
+      <div class="knob-group">
+        <span class="knob-label">REVERB</span>
+        <input type="range" id="perc-reverb-slider" min="0" max="1" step="0.01" value="0.15">
+      </div>
+    </div>
   </div>
 </div>
 
@@ -982,11 +988,12 @@ function setSoundMode(mode) {
 document.getElementById('inst-btn').addEventListener('click', () => setSoundMode('inst'));
 document.getElementById('voice-btn').addEventListener('click', () => setSoundMode('voice'));
 
-document.getElementById('reverb-slider').addEventListener('input', (e) => {
-  const v = parseFloat(e.target.value);
+function applyReverb(v) {
   if (reverbGain) reverbGain.gain.value = v * 0.5;
   if (dryGain) dryGain.gain.value = 1.0 - v * 0.3;
-});
+}
+document.getElementById('reverb-slider').addEventListener('input', (e) => applyReverb(parseFloat(e.target.value)));
+document.getElementById('perc-reverb-slider').addEventListener('input', (e) => applyReverb(parseFloat(e.target.value)));
 
 document.getElementById('reset-btn').addEventListener('click', () => {
   resetBase();
@@ -1036,8 +1043,9 @@ function startMotion() {
     const dx = ax - lastAccel.x, dy = ay - lastAccel.y, dz = az - lastAccel.z;
     lastAccel = { x: ax, y: ay, z: az };
     const delta = Math.sqrt(dx*dx + dy*dy + dz*dz);
-    const intensity = Math.min(1, delta / 18);
-    if (intensity > 0.06) {
+    const raw = Math.min(1, delta / 24);          // 正規化: より強く振らないと1.0にならない
+    const intensity = raw * raw * raw;             // 3乗カーブ: 弱い振りは極小、強い振りは大
+    if (raw > 0.1) {                               // 生の値で閾値判定
       initAudio();
       playPercSound(currentPercInstr, intensity);
     }
@@ -1091,16 +1099,36 @@ function playPercSound(instr, intensity) {
 }
 
 function playShaker(now, v) {
-  const dur = 0.06 + v * 0.04;
+  // メインノイズバースト (サラサラ高域)
+  const dur = 0.055 + v * 0.05;
   const src = ctx.createBufferSource();
-  src.buffer = noiseBuffer(dur);
-  const f = ctx.createBiquadFilter();
-  f.type = 'bandpass'; f.frequency.value = 4800; f.Q.value = 1.4;
+  src.buffer = noiseBuffer(dur + 0.02);
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass'; hp.frequency.value = 5500;
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'peaking'; bp.frequency.value = 8000; bp.Q.value = 0.8; bp.gain.value = 6;
   const g = ctx.createGain();
-  g.gain.setValueAtTime(v * 0.9, now);
+  g.gain.setValueAtTime(0, now);
+  g.gain.linearRampToValueAtTime(v * 0.75, now + 0.008);
+  g.gain.exponentialRampToValueAtTime(v * 0.2, now + dur * 0.5);
   g.gain.exponentialRampToValueAtTime(0.001, now + dur);
-  src.connect(f); f.connect(g); g.connect(masterGain);
-  src.start(now); src.stop(now + dur);
+  src.connect(hp); hp.connect(bp); bp.connect(g); g.connect(masterGain);
+  src.start(now); src.stop(now + dur + 0.02);
+
+  // 粒感: 少数の短いバースト (ビーズが当たる感)
+  const grains = Math.floor(3 + v * 5);
+  for (let i = 0; i < grains; i++) {
+    const t = now + Math.random() * dur * 0.7;
+    const gs = ctx.createBufferSource();
+    gs.buffer = noiseBuffer(0.012);
+    const gf = ctx.createBiquadFilter();
+    gf.type = 'bandpass'; gf.frequency.value = 6000 + Math.random() * 3000; gf.Q.value = 2;
+    const gg = ctx.createGain();
+    gg.gain.setValueAtTime(v * 0.25, t);
+    gg.gain.exponentialRampToValueAtTime(0.001, t + 0.012);
+    gs.connect(gf); gf.connect(gg); gg.connect(masterGain);
+    gs.start(t); gs.stop(t + 0.015);
+  }
 }
 
 function playTamb(now, v) {
@@ -1121,16 +1149,38 @@ function playTamb(now, v) {
 }
 
 function playCabasa(now, v) {
-  const dur = 0.09 + v * 0.06;
+  // カバサ: ザリザリした金属ビーズのこすれ感
+  // スクレープノイズ本体 (中高域ざらつき)
+  const dur = 0.1 + v * 0.08;
   const src = ctx.createBufferSource();
-  src.buffer = noiseBuffer(dur);
-  const f = ctx.createBiquadFilter();
-  f.type = 'bandpass'; f.frequency.value = 1400; f.Q.value = 0.9;
+  src.buffer = noiseBuffer(dur + 0.02);
+  const hp = ctx.createBiquadFilter();
+  hp.type = 'highpass'; hp.frequency.value = 2000;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 7000;
   const g = ctx.createGain();
-  g.gain.setValueAtTime(v * 0.85, now);
+  // アタックをわずかに遅らせて「ズリ」感
+  g.gain.setValueAtTime(0, now);
+  g.gain.linearRampToValueAtTime(v * 0.7, now + 0.015);
+  g.gain.setValueAtTime(v * 0.7, now + 0.015);
+  g.gain.exponentialRampToValueAtTime(v * 0.3, now + dur * 0.6);
   g.gain.exponentialRampToValueAtTime(0.001, now + dur);
-  src.connect(f); f.connect(g); g.connect(masterGain);
-  src.start(now); src.stop(now + dur);
+  src.connect(hp); hp.connect(lp); lp.connect(g); g.connect(masterGain);
+  src.start(now); src.stop(now + dur + 0.02);
+
+  // 金属的なリング感 (低めのクリック群)
+  const clicks = Math.floor(2 + v * 4);
+  for (let i = 0; i < clicks; i++) {
+    const t = now + 0.01 + Math.random() * dur * 0.5;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = 1800 + Math.random() * 1200;
+    const cg = ctx.createGain();
+    cg.gain.setValueAtTime(v * 0.12, t);
+    cg.gain.exponentialRampToValueAtTime(0.001, t + 0.025);
+    osc.connect(cg); cg.connect(masterGain);
+    osc.start(t); osc.stop(t + 0.03);
+  }
 }
 
 function playSleighBells(now, v) {
